@@ -10,10 +10,13 @@ const l1Wallet = new Wallet(walletPrivateKey, l1Provider)
 const l2Provider = new providers.JsonRpcProvider(process.env.OPTIMISM_RPC_URL)
 const l2Wallet = new Wallet(walletPrivateKey, l2Provider)
 
-
+const l2BridgeAddress ='0x4200000000000000000000000000000000000010';
 async function main(){
     //Deploy Layer 1 Token
-    await deploy("RootToken", l1Wallet, []);
+    let rootToken = await deploy("RootToken", l1Wallet, []);
+
+    //Deploy token on layer 2 
+    let childToken = await deploy("ChildToken", l2Wallet, [l2BridgeAddress, rootToken.address])
 }
 
 
