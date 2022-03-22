@@ -1,5 +1,7 @@
 const { providers, Wallet } = require('ethers')
 const { ethers } = require('hardhat')
+const { Watcher } = require('@eth-optimism/core-utils')
+const { predeploys, getContractInterface } = require('@eth-optimism/contracts')
 require('dotenv').config()
 
 const walletPrivateKey = process.env.PRIVATE_KEY
@@ -47,6 +49,37 @@ async function main() {
         2000000, //gas
         '0x')
     await tx2.wait();
+
+    const l2Messenger = getL2Messenger()
+    const l1Messenger = await getL1Messenger(l2Messenger);
+    const watcher = getWatcher(l1Messenger.address, l2Messenger.address);
+    
+    logWithTime('Waiting for deposit to be relayed to L2...');
+    const [ msgHash1 ] = await watcher.getMessageHashesFromL1Tx(tx2.hash)
+    const receipt = await watcher.getL2TransactionReceipt(msgHash1, true);
+
+    logWithTime(`Balance on L1: ${await rootToken.balanceOf(l1Wallet.address)}`) 
+    logWithTime(`Balance on L2: ${await childToken.balanceOf(l1Wallet.address)}`) 
+    
+
+    // Burn the tokens on L2 and ask the L1 contract to unlock on our behalf.
+    logWithTime(`Withdrawing tokens back to L1 ...`)
+    const tx3 = await l2StandardBridge.withdraw(
+        childToken.address,
+        amount,
+        2000000, // gas cost
+        '0x'
+    );
+    await tx3.wait()
+
+    // Wait for the message to be relayed to L1.
+    logWithTime(`Waiting for withdrawal to be relayed to L1...`)
+    const [ msgHash2 ] = await watcher.getMessageHashesFromL2Tx(tx3.hash)
+    await watcher.getL1TransactionReceipt(msgHash2)
+
+    // Log balances again!
+    console.log(`Balance on L1: ${await L1_ERC20.balanceOf(l1Wallet.address)}`) // 1234
+    console.log(`Balance on L2: ${await L2_ERC20.balanceOf(l1Wallet.address)}`) // 0
 }
 
 
@@ -67,19 +100,39 @@ function getContract(artifactPath, address) {
         .attach(address)
     return contract;
 }
-// function getWatcher(){
-//     // Tool that helps watches and waits for messages to be relayed between L1 and L2.
-//   return watcher = new Watcher({
-//     l1: {
-//       provider: l1RpcProvider,
-//       messengerAddress: l1MessengerAddress
-//     },
-//     l2: {
-//       provider: l2RpcProvider,
-//       messengerAddress: l2MessengerAddress
-//     }
-//   })
-// }
+function getL2Messenger(){
+    return new ethers.Contract(
+        predeploys.L2CrossDomainMessenger,
+        getContractInterface('L2CrossDomainMessenger'),
+        l2Provider
+    )
+}
+
+async function getL1Messenger(l2Messenger){
+    return new ethers.Contract(
+        await l2Messenger.l1CrossDomainMessenger(),
+        getContractInterface('L1CrossDomainMessenger'),
+        l1Provider
+    )
+}
+
+function getWatcher(l1MessengerAddress, l2MessengerAddress){
+    // Tool that watches and waits for messages to be relayed between L1 and L2.
+  return new Watcher({
+    l1: {
+      provider: l1Provider,
+      messengerAddress: l1MessengerAddress
+    },
+    l2: {
+      provider: l2Provider,
+      messengerAddress: l2MessengerAddress
+    }
+  })
+}
+
+function logWithTime(message){
+    console.log(`${new Date().toTimeString()} - ${message}`);
+}
 
 main()
     .then(() => process.exit(0))
