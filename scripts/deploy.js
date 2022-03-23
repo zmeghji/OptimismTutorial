@@ -49,7 +49,7 @@ async function main() {
         2000000, //gas
         '0x')
     await tx2.wait();
-
+    logWithTime(`tx2: ${tx2.hash}`);
     const l2Messenger = getL2Messenger()
     const l1Messenger = await getL1Messenger(l2Messenger);
     const watcher = getWatcher(l1Messenger.address, l2Messenger.address);
