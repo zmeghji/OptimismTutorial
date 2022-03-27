@@ -25,13 +25,15 @@ async function main() {
     //Get the address of the bridge on layer 1
     const l2StandardBridge = getContract(
         `../node_modules/@eth-optimism/contracts/artifacts/contracts/L2/messaging/L2StandardBridge.sol/L2StandardBridge.json`,
-        l2BridgeAddress
+        l2BridgeAddress,
+        l2Wallet
     )
     const l1StandardBridgeAddress = await l2StandardBridge.l1TokenBridge();
     console.log(`The l1 standard bridge address is ${l1StandardBridgeAddress}`);
     const l1StandardBridge = getContract(
         `../node_modules/@eth-optimism/contracts/artifacts/contracts/L1/messaging/L1StandardBridge.sol/L1StandardBridge.json`,
-        l1StandardBridgeAddress
+        l1StandardBridgeAddress,
+        l1Wallet
     )
 
     //Approve tokens to be transferred by bridge
@@ -39,6 +41,12 @@ async function main() {
     let amount = hre.ethers.utils.parseEther('1000.0');
     let tx1 = await rootToken.approve(l1StandardBridgeAddress, amount);
     await tx1.wait();
+    
+    //
+    if (await childToken.l1Token() != rootToken.address) {
+        console.log(`L2 token does not correspond to L1 token: L2_ERC20.l1Token() = ${await L2_ERC20.l1Token()}`)
+        process.exit(0)
+    }
 
     //Deposit tokens to L2
     console.log("Depositing tokens to l2");
@@ -48,38 +56,38 @@ async function main() {
         amount,
         2000000, //gas
         '0x')
-    await tx2.wait();
+    let x = await tx2.wait();
     logWithTime(`tx2: ${tx2.hash}`);
     const l2Messenger = getL2Messenger()
     const l1Messenger = await getL1Messenger(l2Messenger);
     const watcher = getWatcher(l1Messenger.address, l2Messenger.address);
-    
+
     logWithTime('Waiting for deposit to be relayed to L2...');
-    const [ msgHash1 ] = await watcher.getMessageHashesFromL1Tx(tx2.hash)
+    const [msgHash1] = await watcher.getMessageHashesFromL1Tx(tx2.hash)
     const receipt = await watcher.getL2TransactionReceipt(msgHash1, true);
 
-    logWithTime(`Balance on L1: ${await rootToken.balanceOf(l1Wallet.address)}`) 
-    logWithTime(`Balance on L2: ${await childToken.balanceOf(l1Wallet.address)}`) 
-    
+    logWithTime(`Balance on L1: ${await rootToken.balanceOf(l1Wallet.address)}`)
+    logWithTime(`Balance on L2: ${await childToken.balanceOf(l1Wallet.address)}`)
+
 
     // Burn the tokens on L2 and ask the L1 contract to unlock on our behalf.
-    logWithTime(`Withdrawing tokens back to L1 ...`)
-    const tx3 = await l2StandardBridge.withdraw(
-        childToken.address,
-        amount,
-        2000000, // gas cost
-        '0x'
-    );
-    await tx3.wait()
+    // logWithTime(`Withdrawing tokens back to L1 ...`)
+    // const tx3 = await l2StandardBridge.withdraw(
+    //     childToken.address,
+    //     amount,
+    //     2000000, // gas cost
+    //     '0x'
+    // );
+    // await tx3.wait()
 
-    // Wait for the message to be relayed to L1.
-    logWithTime(`Waiting for withdrawal to be relayed to L1...`)
-    const [ msgHash2 ] = await watcher.getMessageHashesFromL2Tx(tx3.hash)
-    await watcher.getL1TransactionReceipt(msgHash2)
+    // // Wait for the message to be relayed to L1.
+    // logWithTime(`Waiting for withdrawal to be relayed to L1...`)
+    // const [msgHash2] = await watcher.getMessageHashesFromL2Tx(tx3.hash)
+    // await watcher.getL1TransactionReceipt(msgHash2)
 
-    // Log balances again!
-    console.log(`Balance on L1: ${await L1_ERC20.balanceOf(l1Wallet.address)}`) // 1234
-    console.log(`Balance on L2: ${await L2_ERC20.balanceOf(l1Wallet.address)}`) // 0
+    // // Log balances again!
+    // console.log(`Balance on L1: ${await L1_ERC20.balanceOf(l1Wallet.address)}`) // 1234
+    // console.log(`Balance on L2: ${await L2_ERC20.balanceOf(l1Wallet.address)}`) // 0
 }
 
 
@@ -92,15 +100,15 @@ async function deploy(contractName, wallet, constructorArgs) {
     return contract;
 }
 
-function getContract(artifactPath, address) {
+function getContract(artifactPath, address, wallet) {
     const artifact = require(artifactPath)
     const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode)
     const contract = factory
-        .connect(l2Wallet)
+        .connect(wallet)
         .attach(address)
     return contract;
 }
-function getL2Messenger(){
+function getL2Messenger() {
     return new ethers.Contract(
         predeploys.L2CrossDomainMessenger,
         getContractInterface('L2CrossDomainMessenger'),
@@ -108,7 +116,7 @@ function getL2Messenger(){
     )
 }
 
-async function getL1Messenger(l2Messenger){
+async function getL1Messenger(l2Messenger) {
     return new ethers.Contract(
         await l2Messenger.l1CrossDomainMessenger(),
         getContractInterface('L1CrossDomainMessenger'),
@@ -116,21 +124,21 @@ async function getL1Messenger(l2Messenger){
     )
 }
 
-function getWatcher(l1MessengerAddress, l2MessengerAddress){
+function getWatcher(l1MessengerAddress, l2MessengerAddress) {
     // Tool that watches and waits for messages to be relayed between L1 and L2.
-  return new Watcher({
-    l1: {
-      provider: l1Provider,
-      messengerAddress: l1MessengerAddress
-    },
-    l2: {
-      provider: l2Provider,
-      messengerAddress: l2MessengerAddress
-    }
-  })
+    return new Watcher({
+        l1: {
+            provider: l1Provider,
+            messengerAddress: l1MessengerAddress
+        },
+        l2: {
+            provider: l2Provider,
+            messengerAddress: l2MessengerAddress
+        }
+    })
 }
 
-function logWithTime(message){
+function logWithTime(message) {
     console.log(`${new Date().toTimeString()} - ${message}`);
 }
 

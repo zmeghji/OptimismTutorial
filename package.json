@@ -1,8 +1,8 @@
 {
   "name": "hardhat-project",
   "dependencies": {
-    "@eth-optimism/contracts": "^0.5.17",
-    "@eth-optimism/core-utils": "^0.7.7",
+    "@eth-optimism/contracts": "^0.0.0-2021915193618",
+    "@eth-optimism/core-utils": "^0.0.0-2021915193618",
     "@nomiclabs/hardhat-waffle": "^2.0.3",
     "@openzeppelin/contracts": "^4.5.0",
     "dotenv": "^16.0.0",
